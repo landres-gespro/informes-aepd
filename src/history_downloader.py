@@ -4,10 +4,10 @@ import time
 import requests
 import pymupdf
 
-INDEX_FILE = "data/history/index.csv"
-HISTORY_DIR = "data/history"
-FAILS_FILE = "data/history/fallos.csv"
-BATCH_SIZE = 60  # Resoluciones históricas por noche
+INDEX_FILE = "data/informes/index.csv"
+HISTORY_DIR = "data/informes"
+FAILS_FILE = "data/informes/fallos.csv"
+BATCH_SIZE = 60  # Informes históricos por noche
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
