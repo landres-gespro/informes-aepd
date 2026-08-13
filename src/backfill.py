@@ -6,7 +6,7 @@ import requests
 from collections import Counter
 
 CDX_URL = "https://web.archive.org/cdx/search/cdx"
-INDEX_FILE = "data/history/index.csv"
+INDEX_FILE = "data/informes/index.csv"
 
 def cdx_query(params):
     try:
@@ -26,7 +26,7 @@ def main():
         with open(INDEX_FILE, encoding="utf-8") as f:
             n = sum(1 for _ in f) - 1
         if n > 0:
-            print(f"📚 El censo histórico ya existe ({n} resoluciones). Saltando descarga.")
+            print(f"📚 El censo histórico ya existe ({n} informes). Saltando descarga.")
             return
         else:
             print("📚 El censo existe pero está vacío. Volviendo a consultar...")
@@ -40,7 +40,7 @@ def main():
         "filter": "statuscode:200",
     }
 
-        rows = []
+    rows = []
     # Intentos 1 y 2: carpeta de informes, con y sin www
     for host in ["www.aepd.es/informe/*.pdf", "aepd.es/informe/*.pdf"]:
         p = dict(base)
@@ -65,11 +65,7 @@ def main():
         return
 
     print(f"🔎 Total bruto: {len(rows)} capturas únicas.")
-    print("📋 Primeras 3 URLs de muestra:")
-    for r0 in rows[:3]:
-        print("   ", r0)
 
-    # Deduplicar y extraer el año del nombre del archivo (ej. ps-00415-2024.pdf)
     seen = {}
     for original, timestamp in rows:
         original = original.strip()
@@ -108,9 +104,9 @@ def main():
         w.writerows(entries)
 
     c = Counter(e["year"] for e in entries)
-    print(f"✅ Censo guardado: {len(entries)} resoluciones únicas (2016 en adelante).")
+    print(f"✅ Censo guardado: {len(entries)} informes únicos (2016 en adelante).")
     for y in sorted(c):
-        print(f"   Año {y}: {c[y]} resoluciones")
+        print(f"   Año {y}: {c[y]} informes")
 
 if __name__ == "__main__":
     main()
