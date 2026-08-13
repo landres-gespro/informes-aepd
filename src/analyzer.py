@@ -12,32 +12,33 @@ BATCH_SIZE = 25
 client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
 
 class AnalisisResolucion(BaseModel):
-    tematica: str = Field(description="Categoría principal (ej. Videovigilancia, RRHH, RGPD)")
-    resumen_ejecutivo: str = Field(description="Resumen DETALLADO de 4-6 frases: quién reclamó, qué ocurrió, qué analizó la AEPD y qué se concluyó.")
-    hechos_principales: list[str] = Field(description="Lista de 3 a 5 puntos clave.")
-    resolucion_final: str = Field(description="Conclusión: Sanción (y cuantía), Archivo, Apercibimiento.")
-    normativas_infringidas: list[str] = Field(description="Artículos infringidos.")
-    palabras_clave: list[str] = Field(description="5-8 palabras o conceptos cortos que definan el caso (ej. 'videovigilancia', 'baños', 'consentimiento').")
-
+    tematica: str = Field(description="Ámbito del informe (ej. Videovigilancia, Historias clínicas, Cesiones de datos, Seguridad, Transparencia...)")
+    resumen_ejecutivo: str = Field(description="Resumen DETALLADO de 4-6 frases: quién consulta, qué se pregunta y qué responde el Gabinete Jurídico.")
+    hechos_principales: list[str] = Field(description="Lista de 3 a 5 puntos clave del contexto de la consulta.")
+    resolucion_final: str = Field(description="Conclusión jurídica principal del informe (la respuesta del Gabinete Jurídico).")
+    normativas_infringidas: list[str] = Field(description="Normas o artículos analizados/citados (LOPD, RGPD, LOPDGDD, leyes sectoriales...).")
+    palabras_clave: list[str] = Field(description="5-8 palabras o conceptos cortos que definan el informe.")
+    
 def analyze_text(texto):
     if not texto or "Error" in str(texto):
         return None
         
     texto_input = str(texto)[:6000]
     
-    prompt = f"""Eres un asistente legal experto en la AEPD. Analiza el texto y extrae la información.
+prompt = f"""Eres un asistente legal experto en dictámenes del Gabinete Jurídico de la AEPD.
+El texto que recibirás es una CONSULTA jurídica (no una sanción): alguien pregunta y el Gabinete responde.
 DEBES devolver EXCLUSIVAMENTE un objeto JSON con EXACTAMENTE estas 6 claves:
 "tematica", "resumen_ejecutivo", "hechos_principales", "resolucion_final", "normativas_infringidas", "palabras_clave".
 Si no encuentras información para una clave, usa el string "No especificado" o una lista vacía [].
 
 EJEMPLO DE RESPUESTA OBLIGATORIA:
 {{
-  "tematica": "Videovigilancia",
-  "resumen_ejecutivo": "Una comunidad de vecinos instaló cámaras que grababan la vía pública sin autorización. Un vecino denunció la grabación de zonas comunes y accesos. La AEPD analizó la proporcionalidad de la medida y la ausencia de carteles informativos. Se concluyó que el tratamiento carecía de base jurídica válida y resultaba desproporcionado.",
-  "hechos_principales": ["Instalación de cámaras sin aviso", "Grabación de la calle", "Denuncia de un vecino"],
-  "resolucion_final": "Sanción de 3.000 euros",
-  "normativas_infringidas": ["Art. 5 RGPD", "Art. 6 RGPD"],
-  "palabras_clave": ["videovigilancia", "cámaras", "comunidad de vecinos", "vía pública", "carteles informativos", "sanción"]
+  "tematica": "Imágenes en centros sanitarios",
+  "resumen_ejecutivo": "Un centro hospitalario consulta si las imágenes tomadas a pacientes forman parte de su historia clínica. El Gabinete Jurídico analiza la finalidad con la que se obtienen las imágenes. Concluye que solo integran la historia clínica si su fin es asistencial, no si se usan para seguridad.",
+  "hechos_principales": ["Consulta de un centro sanitario", "Imágenes de pacientes", "Duda sobre su régimen jurídico"],
+  "resolucion_final": "Las imágenes solo son historia clínica si se obtienen con finalidad asistencial; si es de seguridad, no.",
+  "normativas_infringidas": ["Ley Orgánica 15/1999", "Art. 20 LOPD", "RD 1720/2007"],
+  "palabras_clave": ["historia clínica", "imágenes médicas", "centro sanitario", "datos de salud", "videovigilancia"]
 }}
 
 TEXTO A ANALIZAR:
