@@ -5,7 +5,7 @@ import feedparser
 import requests
 import pymupdf
 
-RSS_URL = "https://www.aepd.es/informes-y-resoluciones/resoluciones/feed.xml"
+RSS_URL = "https://www.aepd.es/informes-y-resoluciones/informes-juridicos/feed.xml"
 DATA_FILE = "data/resultados.csv"
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
