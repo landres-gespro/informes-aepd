@@ -40,9 +40,9 @@ def main():
         "filter": "statuscode:200",
     }
 
-    rows = []
-    # Intentos 1 y 2: con y sin www (Wayback los indexa por separado)
-    for host in ["www.aepd.es/documento/*.pdf", "aepd.es/documento/*.pdf"]:
+        rows = []
+    # Intentos 1 y 2: carpeta de informes, con y sin www
+    for host in ["www.aepd.es/informe/*.pdf", "aepd.es/informe/*.pdf"]:
         p = dict(base)
         p["url"] = host
         got = cdx_query(p)
@@ -50,12 +50,12 @@ def main():
         rows += got
         time.sleep(2)
 
-    # Intento 3 (respaldo): todo el dominio, filtrando por /documento/*.pdf
+    # Intento 3 (respaldo): todo el dominio, filtrando por patrón AÑO-NUMERO.pdf
     if not rows:
         p = dict(base)
         p["url"] = "aepd.es"
         p["matchType"] = "domain"
-        p["filter"] = r"original:.*documento.*\.pdf"
+        p["filter"] = r"original:.*/\d{4}-\d{3,4}\.pdf"
         got = cdx_query(p)
         print(f"🔎 Consulta de dominio completo: {len(got)} URLs.")
         rows += got
@@ -75,12 +75,17 @@ def main():
         original = original.strip()
         if not original.lower().endswith(".pdf"):
             continue
-        m = re.search(r"(\d{4})\.pdf$", original)
+        filename = original.rstrip("/").split("/")[-1].lower()
+        # SOLO nombres con formato de informe: AÑO-NÚMERO.pdf (ej. 2016-0302.pdf)
+        if not re.match(r"^\d{4}-\d{3,4}\.pdf$", filename):
+            continue
+        # El año de un informe está AL PRINCIPIO del nombre
+        m = re.match(r"^(\d{4})-", filename)
         year = int(m.group(1)) if m else 0
         if year and (year < 2016 or year > 2100):
             continue  # Solo nos interesa 2016 en adelante
-        # Deduplicamos por NOMBRE de archivo (ID de resolución), no por URL completa
-        key = original.rstrip("/").split("/")[-1].lower()
+        # Deduplicamos por NOMBRE de archivo (ID del informe), no por URL completa
+        key = filename
         if key not in seen or timestamp > seen[key][0]:
             seen[key] = (timestamp, original, year)
 
