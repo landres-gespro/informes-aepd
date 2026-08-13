@@ -1,24 +1,26 @@
 import os
 import sys
 import csv
-import feedparser
 import requests
 import pymupdf
 
-RSS_URL = "https://www.aepd.es/informes-y-resoluciones/informes-juridicos/feed.xml"
+INDEX_FILE = "data/informes/index.csv"
 DATA_FILE = "data/resultados.csv"
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 }
 
-def get_processed_links():
-    """Lee el CSV y devuelve una lista de enlaces de PDFs que ya hemos procesado."""
+def get_processed_ids():
+    """Lee el CSV y devuelve los IDs de informes ya procesados."""
     processed = set()
     if os.path.exists(DATA_FILE):
         with open(DATA_FILE, mode='r', encoding='utf-8') as file:
             reader = csv.DictReader(file)
             for row in reader:
-                processed.add(row.get('Link_PDF', ''))
+                titulo = row.get('Titulo', '')
+                if titulo:
+                    # El ID es el nombre del archivo sin .pdf
+                    processed.add(titulo.replace('.pdf', '').lower())
     return processed
 
 def download_pdf_text(url):
@@ -26,33 +28,48 @@ def download_pdf_text(url):
     try:
         response = requests.get(url, headers=HEADERS, timeout=30)
         response.raise_for_status()
+        if response.content[:4] != b"%PDF":
+            return f"Error: no es un PDF válido"
         doc = pymupdf.open(stream=response.content, filetype="pdf")
         text = "".join([page.get_text() for page in doc])
-        # Limpiamos saltos de línea para que no rompan el CSV
         return text.replace('\n', ' ').replace('\r', ' ').strip()
     except Exception as e:
         return f"Error extrayendo PDF: {e}"
 
 def main():
-    print("🤖 Conectando al canal RSS oficial de la AEPD...")
-    # feedparser maneja automáticamente la decodificación y estructura del XML
-    feed = feedparser.parse(RSS_URL)
+    print("🤖 Buscando informes recientes en el censo histórico...")
     
-    if not feed.entries:
-        print("⚠️ No se pudieron leer entradas del RSS.")
+    if not os.path.exists(INDEX_FILE):
+        print("⚠️ No existe el censo histórico. Ejecuta primero el paso 4b.")
         sys.exit(0)
-        
-    print(f"📡 Encontradas {len(feed.entries)} resoluciones recientes en el RSS.")
     
-    # Comprobamos qué tenemos ya para no descargar lo mismo dos veces
-    processed_links = get_processed_links()
-    new_entries = [entry for entry in feed.entries if entry.link not in processed_links]
+    # Cargar el censo
+    with open(INDEX_FILE, mode='r', encoding='utf-8') as file:
+        reader = csv.DictReader(file)
+        all_informes = list(reader)
     
-    if not new_entries:
-        print("✅ No hay resoluciones nuevas que no tengamos ya en nuestra base de datos.")
+    if not all_informes:
+        print("⚠️ El censo está vacío.")
         sys.exit(0)
-        
-    print(f"🚀 Procesando {len(new_entries)} resoluciones NUEVAS...")
+    
+    # Ordenar por año descendente (más recientes primero) y luego por ID descendente
+    all_informes.sort(key=lambda x: (int(x['year']) if x['year'] != '9999' else 0, x['id']), reverse=True)
+    
+    print(f"📚 Censo contiene {len(all_informes)} informes.")
+    
+    # Comprobar qué tenemos ya
+    processed_ids = get_processed_ids()
+    new_informes = [inf for inf in all_informes if inf['id'].lower() not in processed_ids]
+    
+    if not new_informes:
+        print("✅ No hay informes nuevos que no tengamos ya en nuestra base de datos.")
+        sys.exit(0)
+    
+    # Procesar los 10 más recientes (para no saturar en una sola ejecución)
+    batch_size = 10
+    batch = new_informes[:batch_size]
+    
+    print(f"🚀 Procesando {len(batch)} informes recientes (de {len(new_informes)} pendientes)...")
     
     os.makedirs(os.path.dirname(DATA_FILE), exist_ok=True)
     file_exists = os.path.isfile(DATA_FILE)
@@ -61,21 +78,35 @@ def main():
         writer = csv.writer(file)
         if not file_exists:
             writer.writerow(["Titulo", "Link_PDF", "Resumen_AEPD", "Texto_Completo"])
+        
+        for inf in batch:
+            titulo = inf['id']
+            # Intentar primero la URL viva, luego Wayback
+            url_live = inf['url_live']
+            url_wayback = inf['url_wayback']
             
-        for entry in new_entries:
-            titulo = entry.get('title', 'Sin Titulo')
-            link = entry.get('link', '')
-            resumen = entry.get('summary', '').replace('\n', ' ').replace('\r', ' ')
+            print(f"📄 Procesando {titulo} (año {inf['year']})...")
             
-            print(f"📄 Procesando {titulo}...")
-            texto = download_pdf_text(link)
+            # Intento 1: URL oficial
+            texto = download_pdf_text(url_live)
+            link_usado = url_live
             
-            # Guardamos el texto. Limitamos a 3000 caracteres para que el archivo en GitHub no crezca demasiado rápido
-            # (En el futuro, la IA usará este texto para generar el resumen estructurado)
-            writer.writerow([titulo, link, resumen, texto[:3000] + "..."])
-            print(f"💾 Guardado en la base de datos.")
+            # Intento 2: Wayback si falló
+            if texto.startswith("Error"):
+                print(f"   ⚠️ URL oficial falló, intentando Wayback...")
+                texto = download_pdf_text(url_wayback)
+                link_usado = url_wayback
             
-    print("✅ Ciclo completado con éxito.")
+            if texto.startswith("Error"):
+                print(f"   ❌ No se pudo extraer texto de {titulo}")
+                continue
+            
+            # Guardar (limitamos a 3000 caracteres)
+            writer.writerow([titulo, link_usado, f"Informe jurídico {titulo}", texto[:3000] + "..."])
+            print(f"   💾 Guardado en la base de datos.")
+    
+    remaining = len(new_informes) - len(batch)
+    print(f"✅ Ciclo completado. Quedan {remaining} informes pendientes para próximas ejecuciones.")
 
 if __name__ == "__main__":
     main()
