@@ -77,7 +77,7 @@ def main():
     with open(DATA_FILE, mode='a', newline='', encoding='utf-8') as file:
         writer = csv.writer(file)
         if not file_exists:
-            writer.writerow(["Titulo", "Link_PDF", "Resumen_AEPD", "Texto_Completo"])
+            writer.writerow(["Titulo", "Link_PDF", "Resumen_AEPD", "Texto_Completo", "Fecha_Registro"])
         
         for inf in batch:
             titulo = inf['id']
@@ -102,7 +102,9 @@ def main():
                 continue
             
             # Guardar (limitamos a 3000 caracteres)
-            writer.writerow([titulo, link_usado, f"Informe jurídico {titulo}", texto[:3000] + "..."])
+            from datetime import datetime
+            fecha_registro = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            writer.writerow([titulo, link_usado, f"Informe jurídico {titulo}", texto[:3000] + "...", fecha_registro])
             print(f"   💾 Guardado en la base de datos.")
     
     remaining = len(new_informes) - len(batch)
