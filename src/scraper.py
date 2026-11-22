@@ -3,15 +3,15 @@ import sys
 import csv
 import requests
 import pymupdf
+from datetime import datetime, timedelta
 
-INDEX_FILE = "data/informes/index.csv"
 DATA_FILE = "data/resultados.csv"
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
 }
 
 def get_processed_ids():
-    """Lee el CSV y devuelve los IDs de informes ya procesados."""
+    """Lee el CSV y devuelve los IDs ya procesados."""
     processed = set()
     if os.path.exists(DATA_FILE):
         with open(DATA_FILE, mode='r', encoding='utf-8') as file:
@@ -19,96 +19,76 @@ def get_processed_ids():
             for row in reader:
                 titulo = row.get('Titulo', '')
                 if titulo:
-                    # El ID es el nombre del archivo sin .pdf
                     processed.add(titulo.replace('.pdf', '').lower())
     return processed
 
 def download_pdf_text(url):
-    """Descarga el PDF en memoria y extrae todo el texto."""
+    """Descarga el PDF y extrae el texto."""
     try:
         response = requests.get(url, headers=HEADERS, timeout=30)
         response.raise_for_status()
         if response.content[:4] != b"%PDF":
-            return f"Error: no es un PDF válido"
+            return None
         doc = pymupdf.open(stream=response.content, filetype="pdf")
         text = "".join([page.get_text() for page in doc])
         return text.replace('\n', ' ').replace('\r', ' ').strip()
-    except Exception as e:
-        return f"Error extrayendo PDF: {e}"
+    except Exception:
+        return None
+
+def generate_recent_ids():
+    """Genera IDs de informes recientes (últimos 2 años) basándose en patrones."""
+    ids = []
+    current_year = datetime.now().year
+    
+    # Generar IDs para el año actual y el anterior
+    for year in [current_year, current_year - 1]:
+        for num in range(1, 200):  # Hasta 200 informes por año (margen amplio)
+            ids.append(f"{year}-{num:04d}")
+    
+    return ids
 
 def main():
-    print("🤖 Buscando informes recientes en el censo histórico...")
+    print("🤖 Buscando informes recientes...")
     
-    if not os.path.exists(INDEX_FILE):
-        print("⚠️ No existe el censo histórico. Ejecuta primero el paso 4b.")
-        sys.exit(0)
+    # Generar IDs candidatos (2024, 2025, 2026)
+    candidate_ids = generate_recent_ids()
+    print(f"📋 Generados {len(candidate_ids)} IDs candidatos")
     
-    # Cargar el censo
-    with open(INDEX_FILE, mode='r', encoding='utf-8') as file:
-        reader = csv.DictReader(file)
-        all_informes = list(reader)
-    
-    if not all_informes:
-        print("⚠️ El censo está vacío.")
-        sys.exit(0)
-    
-    # Ordenar por año descendente (más recientes primero) y luego por ID descendente
-    all_informes.sort(key=lambda x: (int(x['year']) if x['year'] != '9999' else 0, x['id']), reverse=True)
-    
-    print(f"📚 Censo contiene {len(all_informes)} informes.")
-    
-    # Comprobar qué tenemos ya
+    # Filtrar los que ya tenemos
     processed_ids = get_processed_ids()
-    new_informes = [inf for inf in all_informes if inf['id'].lower() not in processed_ids]
+    new_ids = [id for id in candidate_ids if id.lower() not in processed_ids]
     
-    if not new_informes:
-        print("✅ No hay informes nuevos que no tengamos ya en nuestra base de datos.")
+    if not new_ids:
+        print("✅ No hay informes nuevos que procesar.")
         sys.exit(0)
     
-    # Procesar los 10 más recientes (para no saturar en una sola ejecución)
-    batch_size = 10
-    batch = new_informes[:batch_size]
-    
-    print(f"🚀 Procesando {len(batch)} informes recientes (de {len(new_informes)} pendientes)...")
+    print(f"🚀 Probando {len(new_ids)} IDs nuevos...")
     
     os.makedirs(os.path.dirname(DATA_FILE), exist_ok=True)
     file_exists = os.path.isfile(DATA_FILE)
     
+    found_count = 0
+    batch_size = 50  # Probar hasta 50 IDs por ejecución
+    
     with open(DATA_FILE, mode='a', newline='', encoding='utf-8') as file:
         writer = csv.writer(file)
         if not file_exists:
-            writer.writerow(["Titulo", "Link_PDF", "Resumen_AEPD", "Texto_Completo", "Fecha_Registro"])
+            writer.writerow(["Titulo", "Link_PDF", "Resumen_AEPD", "Texto_Completo"])
         
-        for inf in batch:
-            titulo = inf['id']
-            # Intentar primero la URL viva, luego Wayback
-            url_live = inf['url_live']
-            url_wayback = inf['url_wayback']
+        for informe_id in new_ids[:batch_size]:
+            url = f"https://www.aepd.es/documento/{informe_id}.pdf"
+            print(f"📄 Probando {informe_id}...", end=" ")
             
-            print(f"📄 Procesando {titulo} (año {inf['year']})...")
+            texto = download_pdf_text(url)
             
-            # Intento 1: URL oficial
-            texto = download_pdf_text(url_live)
-            link_usado = url_live
-            
-            # Intento 2: Wayback si falló
-            if texto.startswith("Error"):
-                print(f"   ⚠️ URL oficial falló, intentando Wayback...")
-                texto = download_pdf_text(url_wayback)
-                link_usado = url_wayback
-            
-            if texto.startswith("Error"):
-                print(f"   ❌ No se pudo extraer texto de {titulo}")
-                continue
-            
-            # Guardar (limitamos a 3000 caracteres)
-            from datetime import datetime
-            fecha_registro = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            writer.writerow([titulo, link_usado, f"Informe jurídico {titulo}", texto[:3000] + "...", fecha_registro])
-            print(f"   💾 Guardado en la base de datos.")
+            if texto:
+                writer.writerow([informe_id, url, f"Informe jurídico {informe_id}", texto[:3000] + "..."])
+                print("✅ OK")
+                found_count += 1
+            else:
+                print("❌ No existe")
     
-    remaining = len(new_informes) - len(batch)
-    print(f"✅ Ciclo completado. Quedan {remaining} informes pendientes para próximas ejecuciones.")
+    print(f"✅ Ciclo completado. Encontrados {found_count} informes nuevos.")
 
 if __name__ == "__main__":
     main()
